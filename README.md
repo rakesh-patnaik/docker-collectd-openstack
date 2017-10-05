@@ -23,12 +23,12 @@ check sample_env_file provided in the source.
   - port to bind collectd write_prometheus plugin. By default, 9103. Ref: https://collectd.org/wiki/index.php/Plugin:Write_Prometheus
 
 ## sample_env_file
+
 OS_USERNAME=admin
 OS_PASSWORD=password
 OS_AUTH_URL=https://identity.host.com:5000/v2.0
 OS_PROJECT_NAME=admin1
 WRITE_PROMETHEUS_PORT=9103
-=======================================
 
 ## Docker Usage
 
