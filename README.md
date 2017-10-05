@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 collectd-openstack
 ============
 
@@ -57,3 +58,6 @@ collectd_check_openstack_api_gauge{check_openstack_api="swift-s3-api",instance="
 
 * 9103 
   - Prometheus or other line protocol scrapers target. set using env var WRITE_PROMETHEUS_PORT
+=======
+# docker-collectd-openstack
+>>>>>>> 49c055754fc6bafa79068a25ff7ffea8a37208d6
