@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 collectd-openstack
 ============
 
@@ -23,7 +22,7 @@ check sample_env_file provided in the source.
 * WRITE_PROMETHEUS_PORT
   - port to bind collectd write_prometheus plugin. By default, 9103. Ref: https://collectd.org/wiki/index.php/Plugin:Write_Prometheus
 
-==========sample_env_file==============
+## sample_env_file
 OS_USERNAME=admin
 OS_PASSWORD=password
 OS_AUTH_URL=https://identity.host.com:5000/v2.0
@@ -58,6 +57,4 @@ collectd_check_openstack_api_gauge{check_openstack_api="swift-s3-api",instance="
 
 * 9103 
   - Prometheus or other line protocol scrapers target. set using env var WRITE_PROMETHEUS_PORT
-=======
-# docker-collectd-openstack
->>>>>>> 49c055754fc6bafa79068a25ff7ffea8a37208d6
+
