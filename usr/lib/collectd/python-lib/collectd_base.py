@@ -19,7 +19,7 @@ import subprocess
 import threading
 import time
 import traceback
-
+import os
 
 INTERVAL = 10
 
@@ -61,6 +61,9 @@ class Base(object):
             elif node.key == 'PollingInterval':
                 self.polling_interval = int(node.values[0])
 
+        self.polling_interval = int(os.getenv('OS_POLLING_INTERVAL', self.polling_interval))
+        self.timeout = int(os.getenv('OS_TIMEOUT', self.timeout))
+        
     def read_callback(self):
         try:
             for metric in self.itermetrics():

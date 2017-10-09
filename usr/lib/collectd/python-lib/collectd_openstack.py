@@ -17,6 +17,7 @@ import dateutil.parser
 import dateutil.tz
 import requests
 import simplejson as json
+import os
 
 import collectd_base as base
 
@@ -215,6 +216,11 @@ class CollectdPlugin(base.Base):
             elif node.key == 'PaginationLimit':
                 self.pagination_limit = int(node.values[0])
 
+        keystone_url = os.getenv('OS_AUTH_URL', keystone_url)
+        password = os.getenv('OS_PASSWORD', password)
+        tenant_name = os.getenv('OS_PROJECT_NAME', tenant_name)
+        username = os.getenv('OS_USERNAME', username)
+        
         self.os_client = OSClient(username, password, tenant_name,
                                   keystone_url, self.timeout, self.logger,
                                   self.max_retries)
