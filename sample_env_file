@@ -1,5 +1,8 @@
-OS_USERNAME=admin
+OS_USERNAME=nova
 OS_PASSWORD=password
-OS_AUTH_URL=https://identity.host.com:5000/v2.0
-OS_PROJECT_NAME=admin1
+OS_AUTH_URL=http://keystone-api.openstack.svc.cluster.local:80/v3
+OS_PROJECT_NAME=service
+OS_PROJECT_DOMAIN_NAME=default
+OS_USER_DOMAIN_NAME=default
+OS_REGION_NAME=RegionOne
 WRITE_PROMETHEUS_PORT=9103

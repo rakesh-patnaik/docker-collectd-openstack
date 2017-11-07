@@ -104,6 +104,7 @@ class Base(object):
 
     def dispatch_check_metric(self, check, failure=None):
         metric = {
+            'plugin_instance': self.service_name or self.plugin,
             'meta': {'service_check': self.service_name or self.plugin,
                      'local_check': self.local_check},
             'values': check,

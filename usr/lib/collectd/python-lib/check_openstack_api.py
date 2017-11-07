@@ -39,9 +39,15 @@ class APICheckPlugin(openstack.CollectdPlugin):
         'ceilometer': {
             'path': 'v2/capabilities', 'expect': [200], 'auth': True,
             'name': 'ceilometer-api'},
-        'swift': {'path': 'healthcheck', 'expect': [200], 'name': 'swift-api'},
+        'swift': {'path': '/', 'expect': [200], 'name': 'ceph'},
         'swift_s3': {
             'path': 'healthcheck', 'expect': [200], 'name': 'swift-s3-api'},
+        'murano': {'path': '/', 'expect': [200, 300], 'name': 'murano-api'},
+        'trove': {'path': '/', 'expect': [200, 300], 'name': 'trove-api'},
+        'mistral': {'path': '/', 'expect': [200, 300], 'name': 'mistral-api'},
+        'designate': {'path': '/', 'expect': [200, 300], 'name': 'designate-api'},
+        'contrail_analytics': {'path': '/', 'expect': [200], 'name': 'contrail-analytics-api'},
+        'contrail_config': {'path': '/', 'expect': [200], 'name': 'contrail-config-api'}
     }
 
     def __init__(self, *args, **kwargs):

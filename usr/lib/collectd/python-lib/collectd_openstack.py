@@ -36,12 +36,14 @@ class OSClient(object):
     """
     EXPIRATION_TOKEN_DELTA = datetime.timedelta(0, 30)
 
-    def __init__(self, username, password, tenant, keystone_url, timeout,
+    def __init__(self, username, password, tenant, domain, region, keystone_url, timeout,
                  logger, max_retries):
         self.logger = logger
         self.username = username
         self.password = password
         self.tenant_name = tenant
+        self.domain = domain
+        self.region = region
         self.keystone_url = keystone_url
         self.service_catalog = []
         self.tenant_id = None
@@ -64,20 +66,29 @@ class OSClient(object):
 
     def get_token(self):
         self.clear_token()
-        data = json.dumps({
-            "auth":
-            {
-                'tenantName': self.tenant_name,
-                'passwordCredentials':
-                {
-                    'username': self.username,
-                    'password': self.password
+        data = json.dumps({ 
+            "auth": {
+                "identity": {
+                    "methods": ["password"],
+                    "password": {
+                        "user": {
+                            "name": self.username,
+                            "domain": { "id": self.domain },
+                            "password": self.password
+                        }
+                    }
+                },
+                "scope": {
+                    "project": {
+                        "name": self.tenant_name,
+                        "domain": { "id": self.domain }
+                    }
                 }
             }
-        })
-        self.logger.info("Trying to get token from '%s'" % self.keystone_url)
+        })        
+        self.logger.error("Trying to get token from '%s'" % self.keystone_url)
         r = self.make_request('post',
-                              '%s/tokens' % self.keystone_url, data=data,
+                              '%s/auth/tokens' % self.keystone_url, data=data,
                               token_required=False)
         if not r:
             raise KeystoneException("Cannot get a valid token from %s" %
@@ -89,24 +100,35 @@ class OSClient(object):
 
         data = r.json()
         self.logger.debug("Got response from Keystone: '%s'" % data)
-        self.token = data['access']['token']['id']
-        self.tenant_id = data['access']['token']['tenant']['id']
+        self.token = r.headers.get("X-Subject-Token") 
+        self.tenant_id = data['token']['project']['id']
         self.valid_until = dateutil.parser.parse(
-            data['access']['token']['expires']) - self.EXPIRATION_TOKEN_DELTA
+            data['token']['expires_at']) - self.EXPIRATION_TOKEN_DELTA
         self.service_catalog = []
-        for item in data['access']['serviceCatalog']:
-            endpoint = item['endpoints'][0]
-            if 'internalURL' not in endpoint and 'publicURL' not in endpoint:
+        for item in data['token']['catalog']:
+            internalURL = None
+            publicURL = None
+            adminURL = None
+            for endpoint in item['endpoints']:
+                if endpoint['region'] == self.region or self.region is None:
+                    if endpoint['interface'] == 'internal':
+                        internalURL = endpoint['url']
+                    elif endpoint['interface'] == 'public':
+                        publicURL = endpoint['url']
+                    elif endpoint['interface'] == 'admin':
+                        adminURL = endpoint['url']
+                        
+            if internalURL is None and publicURL is None:
                 self.logger.warning(
                     "Service '{}' skipped because no URL can be found".format(
                         item['name']))
                 continue
             self.service_catalog.append({
                 'name': item['name'],
-                'region': endpoint['region'],
+                'region': self.region,
                 'service_type': item['type'],
-                'url': endpoint.get('internalURL', endpoint.get('publicURL')),
-                'admin_url': endpoint['adminURL'],
+                'url': internalURL if internalURL is not None else publicURL,
+                'admin_url': adminURL,
             })
 
         self.logger.debug("Got token '%s'" % self.token)
@@ -183,6 +205,66 @@ class CollectdPlugin(base.Base):
         return self.os_client.make_request('get', url,
                                            token_required=token_required)
 
+    def iter_workers(self, service):
+        """ Return the list of workers and their state
+
+        Here is an example of returned dictionnary:
+        {
+          'host': 'node.example.com',
+          'service': 'nova-compute',
+          'state': 'up'
+        }
+
+        where 'state' can be 'up', 'down' or 'disabled'
+        """
+
+        if service == 'neutron':
+            endpoint = 'v2.0/agents'
+            entry = 'agents'
+        else:
+            endpoint = 'os-services'
+            entry = 'services'
+
+        ost_services_r = self.get(service, endpoint)
+
+        msg = "Cannot get state of {} workers".format(service)
+        if ost_services_r is None:
+            self.logger.warning(msg)
+        elif ost_services_r.status_code != 200:
+            msg = "{}: Got {} ({})".format(
+                msg, ost_services_r.status_code, ost_services_r.content)
+            self.logger.warning(msg)
+        else:
+            try:
+                r_json = ost_services_r.json()
+            except ValueError:
+                r_json = {}
+
+            if entry not in r_json:
+                msg = "{}: couldn't find '{}' key".format(msg, entry)
+                self.logger.warning(msg)
+            else:
+                for val in r_json[entry]:
+                    data = {'host': val['host'], 'service': val['binary']}
+
+                    if service == 'neutron':
+                        if not val['admin_state_up']:
+                            data['state'] = 'disabled'
+                        else:
+                            data['state'] = 'up' if val['alive'] else 'down'
+                    else:
+                        if val['status'] == 'disabled':
+                            data['state'] = 'disabled'
+                        elif val['state'] == 'up' or val['state'] == 'down':
+                            data['state'] = val['state']
+                        else:
+                            msg = "Unknown state for {} workers:{}".format(
+                                service, val['state'])
+                            self.logger.warning(msg)
+                            continue
+
+                    yield data
+
     def get(self, service, resource, params=None):
         url = self._build_url(service, resource)
         if not url:
@@ -204,23 +286,29 @@ class CollectdPlugin(base.Base):
 
     def config_callback(self, config):
         super(CollectdPlugin, self).config_callback(config)
+        keystone_url = os.getenv('OS_AUTH_URL')
+        password = os.getenv('OS_PASSWORD')
+        tenant_name = os.getenv('OS_PROJECT_NAME')
+        username = os.getenv('OS_USERNAME')
+        user_domain = os.getenv('OS_USER_DOMAIN_NAME')
+        region = os.getenv('OS_REGION_NAME')
+        
         for node in config.children:
-            if node.key == 'Username':
+            if node.key == 'Username' and username is None:
                 username = node.values[0]
-            elif node.key == 'Password':
+            elif node.key == 'Password' and password is None:
                 password = node.values[0]
-            elif node.key == 'Tenant':
+            elif node.key == 'Tenant' and tenant_name is None:
                 tenant_name = node.values[0]
-            elif node.key == 'KeystoneUrl':
+            elif node.key == 'KeystoneUrl' and keystone_url is None:
                 keystone_url = node.values[0]
+            elif node.key == 'UserDomain' and user_domain is None:
+                user_domain = node.values[0]                
+            elif node.key == 'Region' and region is None:
+                region = node.values[0]
             elif node.key == 'PaginationLimit':
                 self.pagination_limit = int(node.values[0])
 
-        keystone_url = os.getenv('OS_AUTH_URL', keystone_url)
-        password = os.getenv('OS_PASSWORD', password)
-        tenant_name = os.getenv('OS_PROJECT_NAME', tenant_name)
-        username = os.getenv('OS_USERNAME', username)
-        
-        self.os_client = OSClient(username, password, tenant_name,
+        self.os_client = OSClient(username, password, tenant_name, user_domain, region,
                                   keystone_url, self.timeout, self.logger,
                                   self.max_retries)
